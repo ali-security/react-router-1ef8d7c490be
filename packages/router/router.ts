@@ -38,8 +38,11 @@ import type {
   AgnosticPatchRoutesOnNavigationFunction,
   DataWithResponseInit,
 } from "./utils";
+import { validateNavigationTarget } from "./navigation";
 import {
+  ABSOLUTE_URL_REGEX,
   ErrorResponseImpl,
+  PROTOCOL_RELATIVE_URL_REGEX,
   ResultType,
   convertRouteMatchToUiMatch,
   convertRoutesToDataRoutes,
@@ -50,6 +53,7 @@ import {
   joinPaths,
   matchRoutes,
   matchRoutesImpl,
+  normalizeProtocolRelativeUrl,
   removeDoubleSlashes,
   resolveTo,
   stripBasename,
@@ -740,8 +744,6 @@ export const IDLE_BLOCKER: BlockerUnblocked = {
   location: undefined,
 };
 
-const ABSOLUTE_URL_REGEX = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
-
 const defaultMapRouteProperties: MapRoutePropertiesFunction = (route) => ({
   hasErrorBoundary: Boolean(route.hasErrorBoundary),
 });
@@ -1381,6 +1383,17 @@ export function createRouter(init: RouterInit): Router {
       ...nextLocation,
       ...init.history.encodeLocation(nextLocation),
     };
+
+    validateNavigationTarget(
+      to == null
+        ? init.history.createHref(state.location)
+        : typeof to === "string"
+        ? to
+        : createPath(to),
+      init.history.createHref(nextLocation),
+      init.history.createURL("/"),
+      "reject"
+    );
 
     let userReplace = opts && opts.replace != null ? opts.replace : undefined;
 
@@ -2694,11 +2707,19 @@ export function createRouter(init: RouterInit): Router {
 
     let location = redirect.response.headers.get("Location");
     invariant(location, "Expected a Location header on the redirect Response");
+    let originalLocation = location;
+    let currentUrl = new URL(request.url);
     location = normalizeRedirectLocation(
       location,
-      new URL(request.url),
+      currentUrl,
       basename,
       init.history,
+    );
+    validateNavigationTarget(
+      originalLocation,
+      location,
+      currentUrl,
+      "allow-explicit"
     );
     let redirectLocation = createLocation(state.location, location, {
       _isRedirect: true,
@@ -5179,8 +5200,10 @@ function normalizeRedirectLocation(
   if (ABSOLUTE_URL_REGEX.test(location)) {
     // Strip off the protocol+origin for same-origin + same-basename absolute redirects
     let normalizedLocation = location;
-    let url = normalizedLocation.startsWith("//")
-      ? new URL(currentUrl.protocol + normalizedLocation)
+    let url = PROTOCOL_RELATIVE_URL_REGEX.test(normalizedLocation)
+      ? new URL(
+          normalizeProtocolRelativeUrl(normalizedLocation, currentUrl.protocol)
+        )
       : new URL(normalizedLocation);
     if (invalidProtocols.includes(url.protocol)) {
       throw new Error("Invalid redirect location");

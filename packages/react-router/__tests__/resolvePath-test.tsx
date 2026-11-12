@@ -60,6 +60,63 @@ describe("resolvePath", () => {
       pathname: "/foo",
     });
 
+    expect(resolvePath("//foo")).toMatchObject({
+      pathname: "/foo",
+    });
+
+    expect(resolvePath("\\\\foo")).toMatchObject({
+      pathname: "/foo",
+    });
+
+    expect(resolvePath("/\\foo")).toMatchObject({
+      pathname: "/foo",
+    });
+
+    expect(resolvePath("\\/foo")).toMatchObject({
+      pathname: "/foo",
+    });
+
+    spy.mockRestore();
+  });
+
+  it("normalizes mixed slashes and backslashes that would produce a protocol-relative URL", () => {
+    let spy = jest.spyOn(console, "warn").mockImplementation(() => {});
+
+    expect(resolvePath("\\\\google.com/path?q=query#hash")).toEqual({
+      pathname: "/google.com/path",
+      search: "?q=query",
+      hash: "#hash",
+    });
+
+    expect(resolvePath("/\\google.com", "/inbox")).toMatchObject({
+      pathname: "/google.com",
+    });
+
+    expect(resolvePath("\\/google.com", "/inbox")).toMatchObject({
+      pathname: "/google.com",
+    });
+
+    expect(resolvePath("/search/../../\\google.com")).toMatchObject({
+      pathname: "/google.com",
+    });
+
+    expect(resolvePath("search/../..\\/google.com", "/inbox")).toMatchObject({
+      pathname: "/google.com",
+    });
+
+    expect(resolvePath("\\google.com", "/")).toMatchObject({
+      pathname: "/google.com",
+    });
+
+    expect(resolvePath("../\\google.com", "/inbox")).toMatchObject({
+      pathname: "/google.com",
+    });
+
+    // A single leading backslash is treated like a leading slash
+    expect(resolvePath("\\google.com", "/inbox")).toMatchObject({
+      pathname: "/google.com",
+    });
+
     spy.mockRestore();
   });
 
